@@ -3,7 +3,8 @@ utils.py
 
 Utility functions for model reproducibility.
 
-Author: Yehyun Suh
+Author: Yehyun Suh  
+Date: 2025-04-15  
 """
 
 import torch
@@ -13,10 +14,10 @@ import numpy as np
 
 def customize_seed(seed):
     """
-    Sets seeds across libraries to ensure reproducible results.
+    Set seeds across libraries to ensure reproducibility.
 
     Args:
-        seed (int): The seed value to be used for all random number generators.
+        seed (int): The seed value to use for torch, numpy, and random.
     """
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)

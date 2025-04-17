@@ -3,7 +3,8 @@ model.py
 
 Defines the U-Net segmentation model for anatomical landmark detection.
 
-Author: Yehyun Suh
+Author: Yehyun Suh  
+Date: 2025-04-15  
 """
 
 import torch.nn as nn
@@ -20,7 +21,7 @@ def UNet(n_landmarks, device):
         device (str): Device to move the model to ('cuda' or 'cpu').
 
     Returns:
-        nn.Module: U-Net model.
+        nn.Module: Configured U-Net model.
     """
     print("---------- Loading Model ----------")
 
@@ -28,13 +29,14 @@ def UNet(n_landmarks, device):
         encoder_name='resnet101',
         encoder_weights='imagenet',
         classes=n_landmarks,
-        activation='sigmoid',  # This will be removed below
+        activation='sigmoid',  # Removed below for logits-based loss
     )
 
     print("---------- Model Loaded ----------")
 
-    # Remove the final sigmoid activation from the segmentation head
-    # so loss functions like BCEWithLogitsLoss can be used instead
-    model.segmentation_head = nn.Sequential(*list(model.segmentation_head.children())[:-1])
+    # Remove final sigmoid to use BCEWithLogitsLoss instead
+    model.segmentation_head = nn.Sequential(
+        *list(model.segmentation_head.children())[:-1]
+    )
 
     return model.to(device)

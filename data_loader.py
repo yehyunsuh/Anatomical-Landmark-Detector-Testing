@@ -1,9 +1,10 @@
 """
 data_loader.py
 
-Dataset and dataloader utilities for anatomical landmark segmentation.
+Dataset and dataloader utilities for anatomical landmark detection.
 
-Author: Yehyun Suh
+Author: Yehyun Suh  
+Date: 2025-04-15
 """
 
 import os
@@ -13,25 +14,23 @@ import torch
 import numpy as np
 import albumentations as A
 
-from scipy.ndimage import binary_dilation
 from albumentations.pytorch import ToTensorV2
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader
 
 
 class SegmentationDataset(Dataset):
     """
-    Custom dataset for anatomical landmark segmentation.
-    Each sample includes an RGB image and a multi-channel binary mask,
-    where each channel corresponds to a dilated landmark point.
+    Dataset class for test images with ground truth landmark annotations.
+    Each sample includes an image and a list of keypoint coordinates.
     """
 
     def __init__(self, csv_path, image_dir, n_landmarks=None):
         """
-        Initializes the dataset by parsing CSV annotations and storing image/landmark paths.
+        Initialize the dataset by reading image names and landmark coords.
 
         Args:
-            csv_path (str): Path to the annotation CSV file.
-            image_dir (str): Directory containing input images.
+            csv_path (str): Path to CSV containing image and landmark data.
+            image_dir (str): Path to directory containing test images.
             n_landmarks (int): Number of landmarks per image.
         """
         self.image_dir = image_dir
@@ -40,11 +39,12 @@ class SegmentationDataset(Dataset):
 
         with open(csv_path, 'r') as f:
             reader = csv.reader(f)
-            header = next(reader)  # Skip header
+            header = next(reader)
             for row in reader:
                 image_name = row[0]
                 coords = list(map(int, row[4:]))
-                assert len(coords) == 2 * n_landmarks, "Mismatch in number of landmark coordinates"
+                assert len(coords) == 2 * n_landmarks, \
+                    f"Mismatch in number of landmarks: expected {2*n_landmarks}, got {len(coords)}"
                 landmarks = [(coords[i], coords[i + 1]) for i in range(0, len(coords), 2)]
                 self.samples.append((image_name, landmarks))
 
@@ -55,51 +55,41 @@ class SegmentationDataset(Dataset):
         image_name, landmarks = self.samples[idx]
         image_path = os.path.join(self.image_dir, image_name)
 
-        # Load and convert image
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
         h, w = image.shape[:2]
         max_side = max(h, w)
 
-        # Apply resizing and normalization
         transform = A.Compose([
             A.PadIfNeeded(min_height=max_side, min_width=max_side),
             A.Resize(512, 512),
-            A.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
+            A.Normalize(mean=(0.485, 0.456, 0.406),
+                        std=(0.229, 0.224, 0.225)),
             ToTensorV2()
         ], keypoint_params=A.KeypointParams(format='xy', remove_invisible=False))
 
-        # transform = A.Compose([
-        #     A.PadIfNeeded(min_height=max_side, min_width=max_side),
-        #     A.Resize(512, 512),
-        #     A.Normalize(
-        #         mean=(0.485, 0.456, 0.406),
-        #         std=(0.229, 0.224, 0.225),
-        #     ),
-        #     ToTensorV2()
-        # ], keypoint_params=A.KeypointParams(format='xy', remove_invisible=False))
-
         transformed = transform(image=image, keypoints=landmarks)
-        image = transformed['image']  # Tensor: [3, H, W]
+        image = transformed['image']
         new_landmarks = transformed['keypoints']
 
         return image, image_name, new_landmarks
-    
+
 
 class SegmentationDataset_wo_Label(Dataset):
     """
-    Custom dataset for anatomical landmark segmentation.
-    Each sample includes an RGB image and a multi-channel binary mask,
-    where each channel corresponds to a dilated landmark point.
+    Dataset class for test images without ground truth landmarks.
+    Returns image tensor and filename only.
     """
 
     def __init__(self, csv_path, image_dir, n_landmarks=None):
         """
-        Initializes the dataset by parsing CSV annotations and storing image paths.
+        Initialize dataset with image file names only.
 
         Args:
-            csv_path (str): Path to the annotation CSV file.
-            image_dir (str): Directory containing input images.
+            csv_path (str): Path to CSV listing test image names.
+            image_dir (str): Directory containing test images.
+            n_landmarks (int): Number of landmarks (not used, but kept for symmetry).
         """
         self.image_dir = image_dir
         self.samples = []
@@ -107,10 +97,10 @@ class SegmentationDataset_wo_Label(Dataset):
 
         with open(csv_path, 'r') as f:
             reader = csv.reader(f)
-            header = next(reader)  # Skip header
+            header = next(reader)
             for row in reader:
                 image_name = row[0]
-                self.samples.append((image_name))
+                self.samples.append(image_name)
 
     def __len__(self):
         return len(self.samples)
@@ -119,76 +109,68 @@ class SegmentationDataset_wo_Label(Dataset):
         image_name = self.samples[idx]
         image_path = os.path.join(self.image_dir, image_name)
 
-        # Load and convert image
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
         h, w = image.shape[:2]
         max_side = max(h, w)
 
-        # Apply resizing and normalization
         transform = A.Compose([
             A.PadIfNeeded(min_height=max_side, min_width=max_side),
             A.Resize(512, 512),
-            A.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
+            A.Normalize(mean=(0.485, 0.456, 0.406),
+                        std=(0.229, 0.224, 0.225)),
             ToTensorV2()
         ])
 
-        # transform = A.Compose([
-        #     A.PadIfNeeded(min_height=max_side, min_width=max_side),
-        #     A.Resize(512, 512),
-        #     A.Normalize(
-        #         mean=(0.485, 0.456, 0.406),
-        #         std=(0.229, 0.224, 0.225),
-        #     ),
-        #     ToTensorV2()
-        # ])
-
         transformed = transform(image=image)
-        image = transformed['image']  # Tensor: [3, H, W]
+        image = transformed['image']
 
         return image, image_name
 
 
 def dataloader(args):
     """
-    Constructs and returns PyTorch dataloaders for testing.
+    Constructs the PyTorch dataloader for labeled or unlabeled test data.
 
     Args:
-        args (argparse.Namespace): Parsed command-line arguments containing all config.
+        args (argparse.Namespace): Parsed CLI arguments.
 
     Returns:
-        test_loader (DataLoader): DataLoader for the test dataset.
+        DataLoader: The test dataloader.
     """
+    csv_path = os.path.join(args.label_dir, args.test_csv_file)
+    image_dir = args.test_image_dir
+
     if args.labels == 'y':
         dataset = SegmentationDataset(
-            csv_path=os.path.join(args.label_dir, args.test_csv_file),
-            image_dir=args.test_image_dir,
+            csv_path=csv_path,
+            image_dir=image_dir,
             n_landmarks=args.n_landmarks,
         )
-
-        test_loader = DataLoader(dataset, batch_size=1, shuffle=True)
-
-        print(f"Test size: {len(test_loader.dataset)}")
-
-        return test_loader
     else:
-        # TODO: Create .csv file for test set and save it in the label directory
-        image_names = os.listdir(args.test_image_dir)
-        os.makedirs(args.label_dir, exist_ok=True)
-        with open(os.path.join(args.label_dir, args.test_csv_file), 'w') as f:
-            writer = csv.writer(f)
-            writer.writerow(['image_name', 'n_landmarks'])
-            for image_name in image_names:
-                writer.writerow([image_name, args.n_landmarks])
+        # If no label CSV exists, auto-generate from image filenames
+        if not os.path.exists(csv_path):
+            print(f"❌ CSV file not found: {csv_path}")
+            print("Generating CSV file from image directory...")
+            os.makedirs(args.label_dir, exist_ok=True)
+            image_names = os.listdir(image_dir)
+
+            with open(csv_path, 'w') as f:
+                writer = csv.writer(f)
+                writer.writerow(['image_name', 'n_landmarks'])
+                for name in image_names:
+                    writer.writerow([name, args.n_landmarks])
+        else:
+            print(f"CSV file already exists: {csv_path}")
 
         dataset = SegmentationDataset_wo_Label(
-            csv_path=os.path.join(args.label_dir, args.test_csv_file),
-            image_dir=args.test_image_dir,
+            csv_path=csv_path,
+            image_dir=image_dir,
             n_landmarks=args.n_landmarks,
         )
 
-        test_loader = DataLoader(dataset, batch_size=1, shuffle=True)
+    test_loader = DataLoader(dataset, batch_size=1, shuffle=True)
+    print(f"🧪 Test size: {len(test_loader.dataset)}")
 
-        print(f"Test size: {len(test_loader.dataset)}")
-
-        return test_loader
+    return test_loader
