@@ -109,6 +109,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    args.experiment_name = args.weight_name.split('.')[0]
+    print(f"Experiment name: {args.experiment_name}")
+
     # Fix seed for reproducibility
     customize_seed(args.seed)
 

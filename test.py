@@ -33,6 +33,7 @@ def test_model_w_label(args, model, device, test_loader):
     model.eval()
     all_pred_coords = []
     all_gt_coords = []
+    image_names = []
 
     with torch.no_grad():
         for idx, (images, image_name, landmarks) in enumerate(tqdm(test_loader, desc="Testing")):
@@ -59,6 +60,7 @@ def test_model_w_label(args, model, device, test_loader):
 
             all_pred_coords.append(pred_coords)
             all_gt_coords.append(gt_coords)
+            image_names.append(image_name[0])
 
             overlay_pred_masks_w_label(image_name, images, pred_coords, gt_coords)
 
@@ -79,7 +81,7 @@ def test_model_w_label(args, model, device, test_loader):
     dists_np = dists.cpu().numpy()
     n_landmarks = dists.shape[1]
 
-    image_names = [f"img_{i:03d}.png" for i in range(len(dists_np))]
+    # image_names = [f"img_{i:03d}.png" for i in range(len(dists_np))]
 
     data = []
     for i in range(len(image_names)):
@@ -100,9 +102,31 @@ def test_model_w_label(args, model, device, test_loader):
 
     # Save results
     os.makedirs("test_results", exist_ok=True)
-    csv_path = os.path.join("test_results", "landmark_distances.csv")
+    csv_path = os.path.join("test_results", f"{args.experiment_name}_landmark_distances.csv")
     df.to_csv(csv_path, index=False)
     print(f"\n✅ Saved landmark distances to {csv_path}")
+
+    # Save actual predicted coordinates
+    pred_coords_np = all_pred_coords.cpu().numpy()
+    image_sizes = [images.shape[-1], images.shape[-2]]  # W, H (assuming all images same size)
+
+    pred_data = []
+    for i in range(len(image_names)):
+        row = [image_names[i], image_sizes[0], image_sizes[1], n_landmarks]
+        for j in range(n_landmarks):
+            x, y = pred_coords_np[i, j]
+            row.extend([int(x),int(y)])
+        pred_data.append(row)
+
+    pred_columns = ["image_name", "image_width", "image_height", "n_landmarks"]
+    for j in range(n_landmarks):
+        pred_columns += [f"landmark_{j+1}_x", f"landmark_{j+1}_y"]
+
+    pred_df = pd.DataFrame(pred_data, columns=pred_columns)
+
+    pred_csv_path = os.path.join("test_results", f"{args.experiment_name}_predicted_coordinates.csv")
+    pred_df.to_csv(pred_csv_path, index=False)
+    print(f"✅ Saved predicted coordinates to {pred_csv_path}")
 
 
 def test_model_wo_label(args, model, device, test_loader):
